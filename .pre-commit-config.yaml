@@ -1,0 +1,27 @@
+# This file is adapted from similar files used in my prior academic and industry work.
+# Those files and this file may have been developed with the help of LLM's like ChatGPT
+
+repos:
+  # Basic pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+
+  # Python static type checker (mypy)
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.15.0
+    hooks:
+      - id: mypy
+
+  # Ruff (Python linting and formatting)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.7
+    hooks:
+      - id: ruff
+      - id: ruff-format
+
+exclude: '^demos/'

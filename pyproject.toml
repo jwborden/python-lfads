@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "python-lfads"
+description = "Python implementation of LFADS (Pandarinath et al., 2018)"
+version = "0.0.1"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "ibllib",
+    "ONE-api",
+    "torch",
+    "tqdm"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pre-commit>=3.7",
+    "pytest>=8.3",
+    "mypy>=1.15",
+    "ruff>=0.10"
+]
+
+[tool.mypy]
+python_version = "3.11"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.setuptools]
+packages = [
+    "src"
+]
