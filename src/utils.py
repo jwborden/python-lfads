@@ -103,7 +103,7 @@ def plot_eg_heat(x: np.ndarray, title: str, fp: Path):
     axs.set_ylabel("Putative Neuron")
     axs.set_xlabel("Time (s)")
 
-    fig.colorbar(pcm, ax=axs, orientation="vertical", label="Voltage (Volts)")
+    fig.colorbar(pcm, ax=axs, orientation="vertical", label="Rate")
 
     fig.tight_layout()
     plt.savefig(fp)

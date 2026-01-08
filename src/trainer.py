@@ -26,7 +26,7 @@ def update_checkpoint(
 ):
     # perform tests
     losses = []
-    for i, x in tqdm(enumerate(loader), desc="Testing Loop", total=25):
+    for i, x in tqdm(enumerate(loader), desc="Testing Loop", total=25, leave=False):
         if i >= 25:
             break
         x = x.to(device)
@@ -66,7 +66,7 @@ def update_checkpoint(
 
     # plot an example
     plot_eg_scatter(x, title="Putative Neural Spikes (Measured)", fp=fps["measured_plot_fp"])
-    plot_eg_heat(rates, title="Putative Neural Spikes (Predicted)", fp=fps["predicted_plot_fp"])
+    plot_eg_heat(rates, title="Predicted Neural Spiking Rates", fp=fps["predicted_plot_fp"])
 
     return None
 
@@ -74,7 +74,7 @@ def update_checkpoint(
 def train(
     steps: int = int(1e5),
     checkpoint_freq: int = 100,
-    lr: float = 0.01,  # from paper
+    lr: float = 0.0001,
     betas: tuple = (0.9, 0.999),  # from paper
     eps: float = 0.1,  # from paper
     ins: str = "",  # if provided, only consider this one probe/recording session
@@ -125,7 +125,7 @@ def train(
         model.zero_grad()
         _, _, _, _, loss = model(x)
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=200.0)  # from paper
         optimizer.step()
 
         train_steps.append(i)

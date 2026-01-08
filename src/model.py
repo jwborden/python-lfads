@@ -7,6 +7,104 @@ from torch import Tensor
 from torch.distributions import Poisson
 
 
+def stable_kl(input_dist: Tensor, target_dist: Tensor, sm_dim: int = 1) -> Tensor:
+    """
+    Numerically stable KL divergence
+    assumes distributions range from -infinity to infinity and don't start in log space
+    the default softmax dim (sm_dim) of 1 assumes shape (B, D) or (B, D, T)
+    """
+    assert input_dist.shape == target_dist.shape, "distribution shapes must batch for kl div"
+    input_dist = F.softmax(input_dist, dim=sm_dim).log()
+    target_dist = F.softmax(target_dist, dim=sm_dim).log()
+    divergence = F.kl_div(input_dist, target_dist, reduction="batchmean", log_target=True)
+    return divergence
+
+
+class ClippedGRU(nn.Module):
+    def __init__(
+        self,
+        input_size: int,
+        hidden_size: int,
+        bidirectional: bool = False,
+        batch_first: bool = False,
+        clip_min: float = -200.0,
+        clip_max: float = 200.0,
+    ):
+        super().__init__()
+
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.bidirectional = bidirectional
+        self.batch_first = batch_first
+        self.clip_min = clip_min
+        self.clip_max = clip_max
+
+        # forward cell
+        self.fw = nn.GRUCell(input_size, hidden_size)
+
+        # backward cell (if needed)
+        if bidirectional:
+            self.bw = nn.GRUCell(input_size, hidden_size)
+
+    def forward(self, x, h0=None):
+        """
+        :param x: inputs
+            (seq_len, batch, input)  if batch_first=False
+            (batch, seq_len, input)  if batch_first=True
+        :param h0: initial state
+            (num_directions, batch, hidden_size) or None
+
+        :returns:
+            output: output features from each step
+                (seq_len, batch, num_directions*hidden_size)  if batch_first=False
+                (batch, seq_len, num_directions*hidden_size)  if batch_first=True
+            h_n: output features from final step
+                (num_directions, batch, hidden_size)
+        """
+        # setup
+        if self.batch_first:
+            x = x.transpose(0, 1)  # (B, T, F) -> (T, B, F)
+        seq_len, batch, _ = x.size()
+        num_dir = 2 if self.bidirectional else 1
+
+        if h0 is None:
+            h0 = torch.zeros(num_dir, batch, self.hidden_size, device=x.device, dtype=x.dtype)
+
+        # forward sweep
+        h_fw = h0[0]
+        fw_out = []
+        for t in range(seq_len):
+            h_fw = self.fw(x[t], h_fw)
+            h_fw = torch.clamp(h_fw, self.clip_min, self.clip_max)
+            fw_out.append(h_fw.unsqueeze(0))
+
+        fw_out = torch.cat(fw_out, dim=0)
+
+        # backward sweep
+        if self.bidirectional:
+            h_bw = h0[1]
+            bw_out = []
+
+            for t in reversed(range(seq_len)):
+                h_bw = self.bw(x[t], h_bw)
+                h_bw = torch.clamp(h_bw, self.clip_min, self.clip_max)
+                bw_out.append(h_bw.unsqueeze(0))
+
+            bw_out.reverse()
+            bw_out = torch.cat(bw_out, dim=0)
+
+            outputs = torch.cat([fw_out, bw_out], dim=-1)
+            h_n = torch.stack([h_fw, h_bw], dim=0)
+        else:
+            outputs = fw_out
+            h_n = h_fw.unsqueeze(0)
+
+        # transpose if needed and return
+        if self.batch_first:
+            outputs = outputs.transpose(0, 1)
+        return outputs, h_n
+
+
 class LFADS(nn.Module):
     def __init__(
         self,
@@ -40,41 +138,46 @@ class LFADS(nn.Module):
         self.drop_fac = nn.Dropout(p_drop)  # applied before affine for factors
 
         # encoder
-        self.encoder = nn.GRU(
+        self.encoder = ClippedGRU(
             input_size=neurons + a_dim,
             hidden_size=H,
             bidirectional=True,
             batch_first=False,
-            dropout=p_drop,
         )
         self.W_mu_g0 = nn.Linear(2 * H, H)
         self.W_sig_g0 = nn.Linear(2 * H, H)
 
         # generator
-        self.generator = nn.GRU(
-            input_size=H, hidden_size=H, bidirectional=False, batch_first=False, dropout=p_drop
+        self.generator = ClippedGRU(
+            input_size=H, hidden_size=H, bidirectional=False, batch_first=False
         )
         self.W_fac = nn.Linear(H, factors)
         self.W_rate = nn.Linear(factors, neurons)
 
         # controller
-        self.controller_bf = nn.GRU(  # bidirectional
+        self.controller_bf = ClippedGRU(  # bidirectional
             input_size=neurons + a_dim,
             hidden_size=H,
             bidirectional=True,
             batch_first=False,
-            dropout=p_drop,
         )
-        self.controller_f = nn.GRU(  # unidirectional
+        self.controller_f = ClippedGRU(  # unidirectional
             input_size=(2 * H + factors),
             hidden_size=H,
             bidirectional=False,
             batch_first=False,
-            dropout=p_drop,
         )
         self.W_mu_c = nn.Linear(H, H)
         self.W_sig_c = nn.Linear(H, H)
 
+        # initialize based on a normal distribution
+        for p in self.parameters():
+            if len(p.shape) == 0:
+                continue
+            k = p.shape[-1]
+            nn.init.normal_(p, mean=0, std=1 / k)
+
+        # count
         self.parameter_count = sum(p.numel() for p in self.parameters())
 
         return None
@@ -116,15 +219,15 @@ class LFADS(nn.Module):
         # sample the control
         controls = self.drop_con(controls)
         _, controls = self.controller_f(
-            torch.cat((E_con[:, t_minus1, ...], factors), 2),  # (1, B, N+O+F)
-            hx=controls,
+            torch.cat((E_con[:, t_minus1, ...], factors), 2),  # (1, B, 2*H+F)
+            controls,  # (1, B, H)
         )
         mu_c = self.W_mu_c(controls)  # (1, B, H)
         sig_c = torch.exp(self.W_sig_c(controls) / 2)
         ut = torch.normal(0, 1, size=controls.shape).to(self.tau.device) * sig_c + mu_c
 
         # generate
-        _, gt = self.generator(ut, gt)  # (1, B, 2*H)
+        _, gt = self.generator(ut, gt)  # (1, B, H)
         gt = self.drop_fac(gt)
         factors = self.W_fac(gt)  # (1, B, F)
         rates = torch.exp(self.W_rate(factors))  # (1, B, N)
@@ -161,6 +264,7 @@ class LFADS(nn.Module):
                 torch.normal(0, 1, size=(1, B, 2 * self.H)).to(self.tau.device) * self.kappa
             )  # (1, B, H)
             xa = torch.zeros(size=(T, B, (N + O))).to(self.tau.device)  # (T, B, N+O)
+            xa = xa + 1e-8  # add a small value for numerical stability
         else:
             x = (
                 torch.zeros(size=(B, N, T)).to(self.tau.device)
@@ -173,6 +277,7 @@ class LFADS(nn.Module):
                 else a.to(self.tau.device)
             )
             xa = torch.cat((x, a), dim=1).permute(2, 0, 1)  # (T, B, N+O)
+            xa = xa + 1e-8  # add a small value for numerical stability
             xa = self.drop_in(xa)
 
             _, E_gen = self.encoder(xa)  # fwd/back (2), B, hidden_size (H)
@@ -218,18 +323,18 @@ class LFADS(nn.Module):
 
             # g0 kl-div loss
             p_g0 = torch.normal(0, 1, size=g0.shape).to(self.tau.device) * self.kappa  # (1, B, 2*H)
-            L_kl_g0 = F.kl_div(g0[0], p_g0[0], reduction="batchmean")
+            L_kl_g0 = stable_kl(g0[0], p_g0[0])
 
             # inferred inputs loos
-            inferred_inputs_0 = inferred_inputs[..., 0]  # (1, H, T)
-            inferred_inputs_t = inferred_inputs[..., 1:]  # (B, H, T)
+            inferred_inputs_0 = inferred_inputs[..., 0]  # (B, H)
+            inferred_inputs_t = inferred_inputs[..., 1:]  # (B, H, T-1)
             p_u = self.infer_u(*inferred_inputs.shape)  # (B, H, T)
-            p_u_0 = p_u[..., 0]
-            p_u_t = p_u[..., 1:]
-            L_kl_u0 = F.kl_div(inferred_inputs_0, p_u_0, reduction="batchmean")
-            L_kl_ut = F.kl_div(inferred_inputs_t, p_u_t, reduction="batchmean")
+            p_u_0 = p_u[..., 0]  # (B, H)
+            p_u_t = p_u[..., 1:]  # (B, H, T-1)
+            L_kl_u0 = stable_kl(inferred_inputs_0, p_u_0)
+            L_kl_ut = stable_kl(inferred_inputs_t, p_u_t)
 
             # total loss
-            loss = L_x - (L_kl_g0 + L_kl_u0 + L_kl_ut)
+            loss = (L_x + L_kl_g0 + L_kl_u0 + L_kl_ut) / B  # average by batch
 
         return rates, factors, states, inferred_inputs, loss
