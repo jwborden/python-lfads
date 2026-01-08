@@ -72,7 +72,7 @@ def update_checkpoint(
 
 
 def train(
-    steps: int = int(1e5),
+    steps: int = int(1e3),
     checkpoint_freq: int = 100,
     lr: float = 0.0001,
     betas: tuple = (0.9, 0.999),  # from paper

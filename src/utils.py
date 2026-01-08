@@ -6,6 +6,7 @@ import torch
 import numpy as np
 import pandas as pd  # type: ignore
 from matplotlib import pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 
 
 def dt_str() -> str:
@@ -90,14 +91,32 @@ def plot_eg_heat(x: np.ndarray, title: str, fp: Path):
 
     fig, axs = plt.subplots(figsize=(10, 8))
 
+    # define our colormap
+    N = 256  # number of discrete color steps
+    colors = np.zeros((N, 4))  # use a grid with four columns (r,g,b,a)
+    colors[:, :3] = np.linspace(  # first three columns are colors
+        [1.0, 1.0, 1.0],  # white
+        [0.0, 0.0, 0.0],  # black
+        N,
+    )
+    colors[:, 3] = np.linspace(  # last column is alpha
+        0.0,  # fully transparent
+        1.0,  # fully opaque
+        N,
+    )
+    custom_cmap = LinearSegmentedColormap.from_list(
+        "white_to_black_fade",
+        colors,
+    )
+
     pcm = axs.pcolormesh(
         np.arange(0, seconds, (1 / bins_per_second)),
         np.arange(0, (x.shape[0])),
         x,
         shading="auto",
-        cmap="coolwarm",
-        vmin=-0.00001,
-        vmax=0.00001,
+        cmap=custom_cmap,
+        vmin=-0.1,
+        vmax=2,
     )
     axs.set_title(title)
     axs.set_ylabel("Putative Neuron")
