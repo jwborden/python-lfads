@@ -115,8 +115,6 @@ def plot_eg_heat(x: np.ndarray, title: str, fp: Path):
         x,
         shading="auto",
         cmap=custom_cmap,
-        vmin=-0.1,
-        vmax=2,
     )
     axs.set_title(title)
     axs.set_ylabel("Putative Neuron")

@@ -33,11 +33,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd  # type: ignore
-
 from brainbox.io.one import SpikeSortingLoader  # type: ignore
 from iblutil.util import Bunch  # type: ignore
 from one.alf.io import AlfBunch  # type: ignore
 from one.api import OneAlyx, ONE  # type: ignore # Docs: https://int-brain-lab.github.io/ONE/
+from tqdm import tqdm  # type: ignore
 
 from src.utils import log, wd
 
@@ -221,7 +221,7 @@ if __name__ == "__main__":
     os.makedirs(train_dir, exist_ok=True)
     os.makedirs(test_dir, exist_ok=True)
 
-    for insertion in insertions:
+    for insertion in tqdm(insertions, desc="Insertions"):
         now = datetime.now(timezone.utc)
         hours_elapsed = (now - start_time).total_seconds() / 3600
         if hours_elapsed > max_hours:

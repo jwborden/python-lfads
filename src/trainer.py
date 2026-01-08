@@ -94,10 +94,10 @@ def train(
     wd = get_wd()
     cp_fps = dict(
         checkpoint_fp=wd / "results" / "checkpoint.pth",
-        metrics_plot_fp=wd / "results" / "metrics.pdf",
+        metrics_plot_fp=wd / "results" / "metrics.png",
         metrics_csv_fp=wd / "results" / "metrics.csv",
-        measured_plot_fp=wd / "results" / "example_measured_spikes.pdf",
-        predicted_plot_fp=wd / "results" / "example_predicted_rates.pdf",
+        measured_plot_fp=wd / "results" / "example_measured_spikes.png",
+        predicted_plot_fp=wd / "results" / "example_predicted_rates.png",
     )
     for _, fp in cp_fps.items():
         os.makedirs(str(Path(fp).parent), exist_ok=True)
