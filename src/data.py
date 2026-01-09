@@ -23,9 +23,14 @@ class OneDs(Dataset):
         self.files: list[str] = []
         self.spikes_shape = (128, 160)
 
-        for entry in os.scandir(self.dir):
-            if entry.name.endswith(".parquet") and (ins == "" or ins in entry.name):
-                self.files.append(str(self.dir / entry.name))
+        if ins == "" or ins is None:
+            for entry in os.scandir(self.dir):
+                if entry.name.endswith(".parquet"):
+                    self.files.append(str(self.dir / entry.name))
+        else:
+            for entry in os.scandir(self.dir):
+                if entry.name.endswith(".parquet") and ins in entry.name:
+                    self.files.append(str(self.dir / entry.name))
 
         return None
 

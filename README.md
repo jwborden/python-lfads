@@ -23,7 +23,7 @@ It may be helpful to note:
 1. Use GitHub to access the repository.
 ```sh
 git clone https://github.com/jwborden/python-lfads.git
-cd teiko-demo
+cd python-lfads
 ```
 2. Set up accessory directories and seed data not tracked by git:
 ```sh
@@ -48,13 +48,22 @@ python -m src.prep_data
 5. Run the training loop.
 ```sh
 # to train on one insertion (one session, one probe)
-python -m src.main.py --ins "fddceb2e-82ba-493d-baba-c5d8af65981f" # (or another pid)
+python -m src.main --ins "f475ae14-9415-453e-b800-1480ea1c868d" # (or another pid)
 # to train on all downloaded data
-python -m src.main.py
+python -m src.main
 ```
-As the training loop runs, it will periodically save the model's state dict, current performance metrics, and example measured/inferred pairs in `./results`. The model could later be reinstantiated for inference.
+As the training loop runs, it will periodically save the model's state dictionary, performance metrics, and example measured/inferred pairs in `./results`. Examples of these plots are shown below. The model could be reinstantiated later from the latest state dictionary for inference or fine-tuning.
 
-<!--  # TODO finish examples <img src="./media/metrics.png" alt="formula" width="750"> -->
+### Example training curve
+Spikes in training loss between steps 300-400 likely show movement of the parameters out of local minima associated with specific mini-batches during stochastic gradient descent.
+
+<img src="./media/metrics.png" alt="formula" width="750">
+
+### Example measured spikes
+<img src="./media/example_measured_spikes_100.png" alt="formula" width="750">
+
+### Example predicted rates 100 steps into training
+<img src="./media/example_predicted_rates_100.png" alt="formula" width="750">
 
 ## Data
 This project uses an open-source neuro-electrophysiology [dataset](https://figshare.com/articles/preprint/Data_release_-_Brainwide_map_-_Q4_2022/21400815) from The International Brain Laboratory ([IBL](https://www.internationalbrainlab.com/)), accessed via the [ONE API](https://int-brain-lab.github.io/ONE/). The API provides raw voltage recordings and spike trains established by [kilosort](https://papers.nips.cc/paper_files/paper/2016/file/1145a30ff80745b56fb0cecf65305017-Paper.pdf). A tutorial to the data is provided at `./data_demo.ipynb` and produces the figures below. In this project I collect and prepare data via ONE with `./src/prep_data.py`.

@@ -81,6 +81,7 @@ def plot_metrics(dfs: tuple[pd.DataFrame, pd.DataFrame], fp: Path):
 
     fig.tight_layout()
     plt.savefig(fp)
+    plt.close()
 
     return None
 
@@ -124,6 +125,7 @@ def plot_eg_heat(x: np.ndarray, title: str, fp: Path):
 
     fig.tight_layout()
     plt.savefig(fp)
+    plt.close()
 
     return None
 

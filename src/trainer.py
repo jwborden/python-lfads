@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import pandas as pd  # type: ignore
@@ -9,7 +8,7 @@ from tqdm import tqdm  # type: ignore
 from src.data import OneDs  # type: ignore
 from src.model import LFADS
 from src.utils import get_available_device, plot_eg_heat, plot_eg_scatter, plot_metrics
-from src.utils import wd as get_wd
+from src.utils import wd
 
 
 @torch.no_grad()
@@ -18,7 +17,7 @@ def update_checkpoint(
     device: torch.device,
     model: LFADS,
     loader: DataLoader,
-    fps: dict[str, Path],
+    working_dir: Path,
     train_steps: list[int],
     test_steps: list[int],
     train_losses: list[float],
@@ -42,7 +41,7 @@ def update_checkpoint(
     test_loss.append(float(sum(losses) / len(losses)))
 
     # save the state dictionary
-    torch.save(model.state_dict(), fps["checkpoint_fp"])
+    torch.save(model.state_dict(), (working_dir / "results" / f"checkpoint_{step}.pth"))
 
     # gather the metrics
     train_metrics_df = pd.DataFrame(
@@ -61,18 +60,26 @@ def update_checkpoint(
 
     # save and plot the metrics
     df.sort_values("step", ascending=False, inplace=True)
-    df.to_csv(fps["metrics_csv_fp"])
-    plot_metrics((train_metrics_df, test_metrics_df), fp=fps["metrics_plot_fp"])
+    df.to_csv(working_dir / "results" / "metrics.csv")
+    plot_metrics((train_metrics_df, test_metrics_df), fp=(working_dir / "results" / "metrics.png"))
 
     # plot an example
-    plot_eg_scatter(x, title="Putative Neural Spikes (Measured)", fp=fps["measured_plot_fp"])
-    plot_eg_heat(rates, title="Predicted Neural Spiking Rates", fp=fps["predicted_plot_fp"])
+    plot_eg_scatter(
+        x,
+        title="Putative Neural Spikes (Measured)",
+        fp=(working_dir / "results" / f"example_measured_spikes_{step}.png"),
+    )
+    plot_eg_heat(
+        rates,
+        title="Predicted Neural Spiking Rates",
+        fp=(working_dir / "results" / f"example_predicted_rates_{step}.png"),
+    )
 
     return None
 
 
 def train(
-    steps: int = int(1e3),
+    steps: int = int(800),
     checkpoint_freq: int = 100,
     lr: float = 0.0001,
     betas: tuple = (0.9, 0.999),  # from paper
@@ -91,16 +98,7 @@ def train(
     train_loader = DataLoader(train_set, batch_size=8, shuffle=True, num_workers=8)
     test_loader = DataLoader(test_set, batch_size=4, shuffle=True, num_workers=8)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=betas, eps=eps)
-    wd = get_wd()
-    cp_fps = dict(
-        checkpoint_fp=wd / "results" / "checkpoint.pth",
-        metrics_plot_fp=wd / "results" / "metrics.png",
-        metrics_csv_fp=wd / "results" / "metrics.csv",
-        measured_plot_fp=wd / "results" / "example_measured_spikes.png",
-        predicted_plot_fp=wd / "results" / "example_predicted_rates.png",
-    )
-    for _, fp in cp_fps.items():
-        os.makedirs(str(Path(fp).parent), exist_ok=True)
+    working_dir = wd()
 
     train_steps: list[int] = []
     test_steps: list[int] = []
@@ -139,7 +137,7 @@ def train(
                 device,
                 model,
                 test_loader,
-                cp_fps,
+                working_dir,
                 train_steps,
                 test_steps,
                 train_losses,
@@ -153,7 +151,7 @@ def train(
         device,
         model,
         test_loader,
-        cp_fps,
+        working_dir,
         train_steps,
         test_steps,
         train_losses,
